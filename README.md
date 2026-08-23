@@ -11,6 +11,12 @@ automatic [NAT traversal](https://docs.iroh.computer/concepts/nat-traversal) and
 relay fallback, while [Tauri](https://tauri.app/) powers the responsive desktop
 and mobile UI.
 
+## Screenshots
+
+| Nearby devices                                 | Sending a file                                  |
+| ---------------------------------------------- | ----------------------------------------------- |
+| ![Nearby devices](docs/screenshots/nearby.png) | ![Sending a file](docs/screenshots/sending.png) |
+
 ## Roadmap
 
 - [x] Nearby device discovery
@@ -18,10 +24,13 @@ and mobile UI.
   - [x] Custom protocol for transfer offers and receiver decisions
   - [x] CLI commands
   - [ ] Multiple files per transfer
+  - [ ] Cancel active transfers
+  - [ ] Resume interrupted transfers
 - [x] Desktop and mobile UI
   - [x] Drag and drop
   - [x] Polish the UI
   - [x] Transfer progress
+  - [ ] Improve user-facing error messages
 - [x] Receiver approval
 - [x] Custom download location
 - [x] Connections beyond the local network
@@ -30,6 +39,7 @@ and mobile UI.
 - [x] Automated tests
 - [ ] Packaged desktop releases
 - [x] Mobile support
+  - [ ] Test on a physical Android device
 
 ## Run
 
