@@ -8,13 +8,8 @@ discovered via mDNS or connected using an
 
 [Iroh](https://www.iroh.computer/) offers encrypted peer-to-peer connections with
 automatic [NAT traversal](https://docs.iroh.computer/concepts/nat-traversal) and
-relay fallback, while [egui](https://www.egui.rs/) powers the desktop UI.
-
-## Screenshots
-
-| Nearby devices                                 | Sending a file                                  |
-| ---------------------------------------------- | ----------------------------------------------- |
-| ![Nearby devices](docs/screenshots/nearby.png) | ![Sending a file](docs/screenshots/sending.png) |
+relay fallback, while [Tauri](https://tauri.app/) powers the responsive desktop
+and mobile UI.
 
 ## Roadmap
 
@@ -23,7 +18,7 @@ relay fallback, while [egui](https://www.egui.rs/) powers the desktop UI.
   - [x] Custom protocol for transfer offers and receiver decisions
   - [x] CLI commands
   - [ ] Multiple files per transfer
-- [x] Desktop UI
+- [x] Desktop and mobile UI
   - [x] Drag and drop
   - [x] Polish the UI
   - [x] Transfer progress
@@ -32,9 +27,9 @@ relay fallback, while [egui](https://www.egui.rs/) powers the desktop UI.
 - [x] Connections beyond the local network
   - [x] Transfer via endpoint ticket
   - [ ] Transfer via numeric code
-- [ ] Automated tests
+- [x] Automated tests
 - [ ] Packaged desktop releases
-- [ ] Mobile support
+- [x] Mobile support
 
 ## Run
 
@@ -50,7 +45,22 @@ cargo run
 
 Select a nearby device or use **Copy Ticket** and **Use Ticket**, then choose or
 drop a file. The receiver can accept or decline the transfer and select where
-to save it.
+to save it. On phones, received files are saved in the app's Documents folder.
+
+### Android and iOS
+
+Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/),
+then initialize and run the desired target:
+
+```bash
+cargo install tauri-cli --version "^2.0.0" --locked
+
+cargo tauri android init
+cargo tauri android dev
+
+cargo tauri ios init
+cargo tauri ios dev
+```
 
 ### CLI
 
@@ -69,6 +79,8 @@ after 60 seconds.
 - macOS — tested
 - Linux — tested
 - Windows — expected to work, not yet tested
+- Android — supported, not yet tested on a physical device
+- iOS — supported and tested on a physical device
 
 ## Architecture
 
@@ -87,7 +99,7 @@ Sender ── blob ───▶ Receiver
 | `protocol.rs` | Encodes offers and transfer responses  |
 | `sender.rs`   | Imports and sends files                |
 | `receiver.rs` | Approves, downloads, and exports files |
-| `ui.rs`       | Desktop interface                      |
+| `app.rs`      | Tauri presentation bridge              |
 | `cli.rs`      | Terminal interface                     |
 
 ## References
