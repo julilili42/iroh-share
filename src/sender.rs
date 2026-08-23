@@ -51,6 +51,7 @@ pub async fn run_sender(
 
     offer.write_to(&mut send).await?;
 
+    // if receiver does not send accept byte within 60 seconds sender times out.
     let decision = tokio::time::timeout(Duration::from_secs(60), transfer_decision(&mut recv))
         .await
         .map_err(|_| anyhow!("receiver did not respond within 60 seconds"))??;

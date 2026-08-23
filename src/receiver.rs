@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use crate::protocol::{DecisionStatus, DownloadStatus, Offer};
 use anyhow::{Context, Result};
@@ -63,8 +66,14 @@ impl ProtocolHandler for OfferProtocol {
             .context("failed to send offer to UI")
             .map_err(accept_error)?;
 
-        match decision_rx.await {
-            Ok(OfferDecision::Accept(download_dir)) => {
+        // receiver times out afer not receiving accept from local ui within 60 seconds.
+        let decision_ui = tokio::time::timeout(Duration::from_secs(10), decision_rx)
+            .await
+            .ok()
+            .and_then(Result::ok);
+
+        match decision_ui {
+            Some(OfferDecision::Accept(download_dir)) => {
                 accept_decision(
                     &download_dir,
                     connection,
@@ -76,7 +85,7 @@ impl ProtocolHandler for OfferProtocol {
                 )
                 .await
             }
-            Ok(OfferDecision::Decline) | Err(_) => decline_decision(connection, send).await,
+            _ => decline_decision(connection, send).await,
         }
     }
 }

@@ -75,7 +75,7 @@ pub async fn select_receiver(
     mut rx: Receiver<Vec<(UserData, EndpointAddr)>>,
 ) -> Result<EndpointAddr> {
     let search_str = "Searching in local net...";
-    println!("{}", search_str);
+    println!("\n{}", search_str);
     rx.wait_for(|devices| !devices.is_empty())
         .await
         .context("device discovery stopped")?;
