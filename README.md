@@ -1,6 +1,6 @@
 # Iroh Share
 
-Inspired by AirDrop I built Iroh Share in Rust.
+Inspired by AirDrop, I built Iroh Share in Rust as a way to explore the Iroh library.
 
 It enables vendor-independent file sharing with receiver approval. Devices are
 discovered via mDNS or connected using an
