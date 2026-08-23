@@ -143,3 +143,65 @@ pub async fn confirm(offer: &Offer) -> io::Result<bool> {
     let decision = matches!(answer.trim().to_ascii_lowercase().as_str(), "y");
     Ok(decision)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use iroh::{Endpoint, endpoint::presets};
+
+    #[test]
+    fn parses_commands_and_rejects_invalid_arguments() -> Result<()> {
+        assert!(matches!(parse_arguments(vec![])?, Command::Ui));
+
+        match parse_arguments(vec!["send", "file.txt"])? {
+            Command::Send {
+                filename,
+                endpoint_addr,
+            } => {
+                assert_eq!(filename, "file.txt");
+                assert!(endpoint_addr.is_none());
+            }
+            _ => panic!("expected send command"),
+        }
+
+        assert!(matches!(
+            parse_arguments(vec!["receive", "."] )?,
+            Command::Receive { download_dir } if download_dir.is_absolute()
+        ));
+        assert!(matches!(parse_arguments(vec!["--help"])?, Command::Help));
+        assert!(matches!(
+            parse_arguments(vec!["--version"])?,
+            Command::Version
+        ));
+
+        for args in [
+            vec!["send"],
+            vec!["send", "a", "b", "c"],
+            vec!["receive", "a", "b"],
+            vec!["unknown"],
+            vec!["send", "file.txt", "invalid-ticket"],
+        ] {
+            assert!(parse_arguments(args).is_err());
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn parses_endpoint_ticket() -> Result<()> {
+        let endpoint = Endpoint::bind(presets::Minimal).await?;
+        let ticket = EndpointTicket::new(endpoint.addr()).to_string();
+
+        let command = parse_arguments(vec!["send", "file.txt", &ticket])?;
+        match command {
+            Command::Send {
+                endpoint_addr: Some(addr),
+                ..
+            } => assert_eq!(addr.id, endpoint.id()),
+            _ => panic!("expected send command with endpoint address"),
+        }
+
+        endpoint.close().await;
+        Ok(())
+    }
+}

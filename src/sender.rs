@@ -84,3 +84,30 @@ pub async fn downloaded(
     }
     Ok(SendOutcome::Completed)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use iroh::endpoint::presets;
+
+    #[tokio::test]
+    async fn rejects_directory_sources() -> Result<()> {
+        let endpoint = Endpoint::bind(presets::Minimal).await?;
+        let store = MemStore::new();
+        let (progress_tx, _) = watch::channel(0);
+
+        let error = run_sender(
+            progress_tx,
+            env!("CARGO_MANIFEST_DIR"),
+            &endpoint,
+            &store,
+            endpoint.addr(),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(error.to_string().contains("is not a regular file"));
+        endpoint.close().await;
+        Ok(())
+    }
+}

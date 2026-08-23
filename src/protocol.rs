@@ -116,3 +116,21 @@ pub async fn transfer_decision(recv: &mut RecvStream) -> Result<DecisionStatus> 
 
     DecisionStatus::try_from(byte)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_decision_status() {
+        assert_eq!(
+            DecisionStatus::try_from(0).unwrap(),
+            DecisionStatus::Declined
+        );
+        assert_eq!(
+            DecisionStatus::try_from(1).unwrap(),
+            DecisionStatus::Accepted
+        );
+        assert!(DecisionStatus::try_from(2).is_err());
+    }
+}

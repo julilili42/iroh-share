@@ -67,7 +67,7 @@ impl ProtocolHandler for OfferProtocol {
             .map_err(accept_error)?;
 
         // receiver times out afer not receiving accept from local ui within 60 seconds.
-        let decision_ui = tokio::time::timeout(Duration::from_secs(10), decision_rx)
+        let decision_ui = tokio::time::timeout(Duration::from_secs(60), decision_rx)
             .await
             .ok()
             .and_then(Result::ok);
@@ -194,4 +194,123 @@ async fn send_progress(
     // to sender (network)
     DownloadStatus::Progress(bytes).write_to(send).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sender::{SendOutcome, run_sender};
+    use anyhow::anyhow;
+    use iroh::{EndpointAddr, endpoint::presets, protocol::Router};
+    use iroh_blobs::BlobsProtocol;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use tokio::time;
+
+    const FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/small.txt");
+
+    async fn send_and_decide(
+        endpoint: &Endpoint,
+        store: &MemStore,
+        receiver_addr: EndpointAddr,
+        offer_rx: &mut mpsc::Receiver<OfferRequest>,
+        decision: OfferDecision,
+    ) -> Result<SendOutcome> {
+        let endpoint = endpoint.clone();
+        let store = store.clone();
+        let (progress_tx, _progress_rx) = watch::channel(0);
+        let sender = tokio::spawn(async move {
+            run_sender(progress_tx, FIXTURE, &endpoint, &store, receiver_addr).await
+        });
+
+        let (offer, decision_tx) = time::timeout(Duration::from_secs(5), offer_rx.recv())
+            .await?
+            .ok_or_else(|| anyhow!("offer channel closed"))?;
+        assert_eq!(offer.filename, "small.txt");
+        assert_eq!(offer.filesize, std::fs::metadata(FIXTURE)?.len());
+        decision_tx
+            .send(decision)
+            .map_err(|_| anyhow!("receiver stopped waiting for the decision"))?;
+
+        time::timeout(Duration::from_secs(15), sender).await??
+    }
+
+    #[tokio::test]
+    async fn transfers_declines_and_protects_existing_files() -> Result<()> {
+        let receiver_endpoint = Endpoint::bind(presets::Minimal).await?;
+        let receiver_store = MemStore::new();
+        let (offer_tx, mut offer_rx) = mpsc::channel(1);
+        let (receiver_progress_tx, receiver_progress_rx) = watch::channel(0);
+        let receiver_router = Router::builder(receiver_endpoint.clone())
+            .accept(iroh_blobs::ALPN, BlobsProtocol::new(&receiver_store, None))
+            .accept(
+                crate::protocol::ALPN,
+                OfferProtocol::new(
+                    &receiver_endpoint,
+                    &receiver_store,
+                    offer_tx,
+                    receiver_progress_tx,
+                ),
+            )
+            .spawn();
+
+        let sender_endpoint = Endpoint::bind(presets::Minimal).await?;
+        let sender_store = MemStore::new();
+        let sender_router = Router::builder(sender_endpoint.clone())
+            .accept(iroh_blobs::ALPN, BlobsProtocol::new(&sender_store, None))
+            .spawn();
+
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        let download_dir = std::env::temp_dir().join(format!("iroh-share-{unique}"));
+        std::fs::create_dir(&download_dir)?;
+
+        let receiver_addr = receiver_endpoint.addr();
+        assert_eq!(
+            send_and_decide(
+                &sender_endpoint,
+                &sender_store,
+                receiver_addr.clone(),
+                &mut offer_rx,
+                OfferDecision::Decline,
+            )
+            .await?,
+            SendOutcome::Declined
+        );
+        assert!(!download_dir.join("small.txt").exists());
+
+        assert_eq!(
+            send_and_decide(
+                &sender_endpoint,
+                &sender_store,
+                receiver_addr.clone(),
+                &mut offer_rx,
+                OfferDecision::Accept(download_dir.clone()),
+            )
+            .await?,
+            SendOutcome::Completed
+        );
+        assert_eq!(
+            std::fs::read(download_dir.join("small.txt"))?,
+            std::fs::read(FIXTURE)?
+        );
+        assert_eq!(
+            *receiver_progress_rx.borrow(),
+            std::fs::metadata(FIXTURE)?.len()
+        );
+
+        let error = send_and_decide(
+            &sender_endpoint,
+            &sender_store,
+            receiver_addr,
+            &mut offer_rx,
+            OfferDecision::Accept(download_dir.clone()),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("download failed"));
+
+        sender_router.shutdown().await?;
+        receiver_router.shutdown().await?;
+        std::fs::remove_dir_all(download_dir)?;
+        Ok(())
+    }
 }
