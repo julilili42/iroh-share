@@ -6,7 +6,8 @@ It enables vendor-independent file sharing with receiver approval. Devices are
 discovered via mDNS or connected using an
 [Iroh endpoint ticket](https://github.com/n0-computer/iroh-tickets).
 
-[Iroh](https://www.iroh.computer/) provides encrypted peer-to-peer connections with automatic [NAT traversal](https://docs.iroh.computer/concepts/nat-traversal) and relay fallback. I chose [Tauri](https://tauri.app/) for the presentation layer because it supports both desktop and mobile platforms.
+[Iroh](https://www.iroh.computer/) provides encrypted peer-to-peer connections with automatic [NAT traversal](https://docs.iroh.computer/concepts/nat-traversal) and relay fallback. 
+I chose [Tauri](https://tauri.app/) for the presentation layer because it supports both desktop and mobile platforms.
 
 ## Screenshots
 
