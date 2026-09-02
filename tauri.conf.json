@@ -1,7 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Iroh Share",
-  "version": "0.1.2",
   "identifier": "computer.iroh.share",
   "build": {
     "frontendDist": "web"
