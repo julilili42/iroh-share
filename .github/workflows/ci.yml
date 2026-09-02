@@ -38,23 +38,29 @@ jobs:
   release:
     if: github.event_name == 'workflow_dispatch'
     needs: checks
-    runs-on: macos-15
     permissions:
       contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-15
+            bundles: dmg
+          - platform: windows-latest
+            bundles: nsis
+    runs-on: ${{ matrix.platform }}
 
     steps:
       - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Build
-        run: cargo build --release --locked
-
-      - name: Publish
+      - uses: tauri-apps/tauri-action@v1
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          version=$(sed -nE 's/^version = "([^"]+)"/\1/p' Cargo.toml | head -n1)
-          archive="iroh-share-v${version}-macos-arm64.tar.gz"
-          tar -czf "$archive" -C target/release iroh-share
-          gh release create "v$version" "$archive" --target "$GITHUB_SHA" --generate-notes
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          tagName: v__VERSION__
+          releaseName: v__VERSION__
+          generateReleaseNotes: true
+          args: --bundles ${{ matrix.bundles }}
+          releaseAssetNamePattern: iroh-share-v[version]-[platform]-[arch][setup][ext]
