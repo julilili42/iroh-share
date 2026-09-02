@@ -60,8 +60,12 @@ jobs:
             bundles: nsis
           - platform: ubuntu-22.04
             bundles: appimage
+            linuxdeploy_arch: x86_64
+            linuxdeploy_sha256: c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
           - platform: ubuntu-22.04-arm
             bundles: appimage
+            linuxdeploy_arch: aarch64
+            linuxdeploy_sha256: 620095110d693282b8ebeb244a95b5e911cf8f65f76c88b4b47d16ae6346fcff
     runs-on: ${{ matrix.platform }}
 
     steps:
@@ -75,9 +79,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libfuse2 patchelf xdg-utils
 
+      - name: Install linuxdeploy
+        if: startsWith(matrix.platform, 'ubuntu-')
+        env:
+          LINUXDEPLOY_ARCH: ${{ matrix.linuxdeploy_arch }}
+          LINUXDEPLOY_SHA256: ${{ matrix.linuxdeploy_sha256 }}
+        run: |
+          mkdir -p "$HOME/.cache/tauri"
+          curl --fail --location --output "$HOME/.cache/tauri/linuxdeploy-$LINUXDEPLOY_ARCH.AppImage" "https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-$LINUXDEPLOY_ARCH.AppImage"
+          echo "$LINUXDEPLOY_SHA256  $HOME/.cache/tauri/linuxdeploy-$LINUXDEPLOY_ARCH.AppImage" | sha256sum --check
+          chmod +x "$HOME/.cache/tauri/linuxdeploy-$LINUXDEPLOY_ARCH.AppImage"
+
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          LINUXDEPLOY_EXCLUDED_LIBRARIES: libwayland-client.so*
         with:
           tagName: v__VERSION__
           releaseName: v__VERSION__
