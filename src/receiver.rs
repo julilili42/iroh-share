@@ -10,7 +10,7 @@ use iroh::{
     endpoint::{Connection, SendStream},
     protocol::{AcceptError, ProtocolHandler},
 };
-use iroh_blobs::{api::downloader::DownloadProgressItem, store::mem::MemStore};
+use iroh_blobs::api::{Store, downloader::DownloadProgressItem};
 use n0_error::e;
 use n0_future::StreamExt;
 use tokio::{
@@ -28,7 +28,7 @@ pub type OfferRequest = (Offer, oneshot::Sender<OfferDecision>);
 #[derive(Debug, Clone)]
 pub struct OfferProtocol {
     pub endpoint: Endpoint,
-    pub store: MemStore,
+    pub store: Store,
     pub offer_tx: mpsc::Sender<OfferRequest>,
     pub progress_tx: watch::Sender<u64>,
 }
@@ -36,7 +36,7 @@ pub struct OfferProtocol {
 impl OfferProtocol {
     pub fn new(
         endpoint: &Endpoint,
-        store: &MemStore,
+        store: &Store,
         offer_tx: mpsc::Sender<OfferRequest>,
         progress_tx: watch::Sender<u64>,
     ) -> Self {
@@ -105,7 +105,7 @@ async fn accept_decision(
     progress_tx: &watch::Sender<u64>,
     offer: Offer,
     endpoint: &Endpoint,
-    store: &MemStore,
+    store: &Store,
 ) -> Result<(), AcceptError> {
     send.write_u8(DecisionStatus::Accepted as u8).await?;
 
@@ -136,7 +136,7 @@ pub async fn download(
     send: &mut SendStream,
     progress_tx: &watch::Sender<u64>,
     endpoint: &Endpoint,
-    store: &MemStore,
+    store: &Store,
     download_dir: &Path,
     offer: Offer,
 ) -> Result<()> {
@@ -150,6 +150,10 @@ pub async fn download(
     }
 
     println!("Starting download.");
+    let _tag = store
+        .tags()
+        .temp_tag(offer.ticket.hash_and_format())
+        .await?;
     let downloader = store.downloader(endpoint);
     let mut stream = downloader
         .download(offer.ticket.hash(), Some(offer.ticket.addr().id))
@@ -202,7 +206,10 @@ mod tests {
     use crate::sender::{SendOutcome, run_sender};
     use anyhow::anyhow;
     use iroh::{EndpointAddr, endpoint::presets, protocol::Router};
-    use iroh_blobs::BlobsProtocol;
+    use iroh_blobs::{
+        BlobsProtocol,
+        store::{fs::FsStore, mem::MemStore},
+    };
     use std::time::{SystemTime, UNIX_EPOCH};
     use tokio::time;
 
@@ -210,7 +217,7 @@ mod tests {
 
     async fn send_and_decide(
         endpoint: &Endpoint,
-        store: &MemStore,
+        store: &Store,
         receiver_addr: EndpointAddr,
         offer_rx: &mut mpsc::Receiver<OfferRequest>,
         decision: OfferDecision,
@@ -236,8 +243,13 @@ mod tests {
 
     #[tokio::test]
     async fn transfers_declines_and_protects_existing_files() -> Result<()> {
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        let test_dir = std::env::temp_dir().join(format!("iroh-share-{unique}"));
+        let download_dir = test_dir.join("downloads");
+        std::fs::create_dir_all(&download_dir)?;
+
         let receiver_endpoint = Endpoint::bind(presets::Minimal).await?;
-        let receiver_store = MemStore::new();
+        let receiver_store: Store = FsStore::load(test_dir.join("store")).await?.into();
         let (offer_tx, mut offer_rx) = mpsc::channel(1);
         let (receiver_progress_tx, receiver_progress_rx) = watch::channel(0);
         let receiver_router = Router::builder(receiver_endpoint.clone())
@@ -258,10 +270,6 @@ mod tests {
         let sender_router = Router::builder(sender_endpoint.clone())
             .accept(iroh_blobs::ALPN, BlobsProtocol::new(&sender_store, None))
             .spawn();
-
-        let unique = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-        let download_dir = std::env::temp_dir().join(format!("iroh-share-{unique}"));
-        std::fs::create_dir(&download_dir)?;
 
         let receiver_addr = receiver_endpoint.addr();
         assert_eq!(
@@ -310,7 +318,7 @@ mod tests {
 
         sender_router.shutdown().await?;
         receiver_router.shutdown().await?;
-        std::fs::remove_dir_all(download_dir)?;
+        std::fs::remove_dir_all(test_dir)?;
         Ok(())
     }
 }

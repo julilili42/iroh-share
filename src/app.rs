@@ -11,7 +11,7 @@ use crate::{
 };
 use anyhow::Result;
 use iroh::{Endpoint, EndpointId, endpoint_info::UserData};
-use iroh_blobs::store::mem::MemStore;
+use iroh_blobs::api::Store;
 use iroh_tickets::{Ticket, endpoint::EndpointTicket};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -42,7 +42,7 @@ struct PendingOffer {
 #[derive(Clone)]
 struct AppState {
     endpoint: Endpoint,
-    store: MemStore,
+    store: Store,
     ticket: String,
     display_name: String,
     peers: Arc<Mutex<Vec<Peer>>>,
@@ -297,6 +297,7 @@ pub fn run(runtime: Runtime) -> Result<()> {
     let Runtime {
         endpoint,
         store,
+        store_dir,
         router,
         ticket,
         offer_rx,
@@ -317,7 +318,7 @@ pub fn run(runtime: Runtime) -> Result<()> {
     };
     let task_state = state.clone();
 
-    tauri::Builder::default()
+    let app_result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(state)
@@ -342,9 +343,13 @@ pub fn run(runtime: Runtime) -> Result<()> {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        .map_err(|error| anyhow::anyhow!(error.to_string()));
 
-    tauri::async_runtime::block_on(router.shutdown())?;
+    let shutdown_result = tauri::async_runtime::block_on(router.shutdown());
+    let cleanup_result = std::fs::remove_dir_all(store_dir);
+    app_result?;
+    shutdown_result?;
+    cleanup_result?;
     Ok(())
 }
 

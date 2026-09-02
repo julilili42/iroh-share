@@ -1,3 +1,8 @@
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
+
 use crate::{
     cli::{Command, confirm, parse_arguments, select_receiver},
     receiver::{OfferDecision, OfferProtocol, OfferRequest},
@@ -5,7 +10,17 @@ use crate::{
 };
 use anyhow::Result;
 use iroh::{Endpoint, EndpointAddr, endpoint::presets, endpoint_info::UserData, protocol::Router};
-use iroh_blobs::{BlobsProtocol, store::mem::MemStore};
+use iroh_blobs::{
+    BlobsProtocol,
+    api::Store,
+    store::{
+        GcConfig,
+        fs::{
+            FsStore,
+            options::{InlineOptions, Options},
+        },
+    },
+};
 use iroh_tickets::endpoint::EndpointTicket;
 use tokio::sync::{mpsc, watch};
 
@@ -19,7 +34,8 @@ mod sender;
 #[derive(Debug)]
 struct Runtime {
     endpoint: Endpoint,
-    store: MemStore,
+    store: Store,
+    store_dir: PathBuf,
     router: Router,
     ticket: EndpointTicket,
     offer_rx: mpsc::Receiver<OfferRequest>,
@@ -28,10 +44,24 @@ struct Runtime {
     progress_tx: watch::Sender<u64>,
 }
 
-async fn start_iroh() -> Result<Runtime> {
+async fn start_iroh(store_dir: &Path) -> Result<Runtime> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let endpoint = Endpoint::bind(presets::N0).await?;
-    let store = MemStore::new();
+    let store = FsStore::load_with_opts(
+        store_dir.join("blobs.db"),
+        Options {
+            inline: InlineOptions::NO_INLINE,
+            gc: Some(GcConfig {
+                interval: Duration::from_secs(60),
+                add_protected: None,
+            }),
+            ..Options::new(store_dir)
+        },
+    )
+    .await?
+    .into();
+
+    let store_dir = store_dir.to_owned();
 
     // startup time
     if tokio::time::timeout(
@@ -66,6 +96,7 @@ async fn start_iroh() -> Result<Runtime> {
     Ok(Runtime {
         endpoint,
         store,
+        store_dir,
         router,
         ticket,
         offer_rx,
@@ -84,7 +115,8 @@ pub async fn desktop_main() -> Result<()> {
         return Ok(());
     }
 
-    let mut runtime = start_iroh().await?;
+    let store_dir = std::env::temp_dir().join(format!("iroh-share-{}", std::process::id()));
+    let mut runtime = start_iroh(&store_dir).await?;
     if matches!(command, Command::Ui) {
         return app::run(runtime);
     }
@@ -130,14 +162,18 @@ pub async fn desktop_main() -> Result<()> {
     .await;
 
     let shutdown_result = router.shutdown().await;
+    let cleanup_result = std::fs::remove_dir_all(runtime.store_dir);
     result?;
     shutdown_result?;
+    cleanup_result?;
     Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt::init();
-    let runtime = tauri::async_runtime::block_on(start_iroh()).expect("failed to start Iroh");
+    let store_dir = std::env::temp_dir().join(format!("iroh-share-{}", std::process::id()));
+    let runtime =
+        tauri::async_runtime::block_on(start_iroh(&store_dir)).expect("failed to start Iroh");
     app::run(runtime).expect("failed to run Iroh Share");
 }

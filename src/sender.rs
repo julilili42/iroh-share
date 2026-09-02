@@ -3,7 +3,7 @@ use std::{path::Path, time::Duration};
 use crate::protocol::{self, DecisionStatus, DownloadStatus, Offer, transfer_decision};
 use anyhow::{Result, anyhow, bail};
 use iroh::{Endpoint, EndpointAddr, endpoint::RecvStream};
-use iroh_blobs::{store::mem::MemStore, ticket::BlobTicket};
+use iroh_blobs::{api::Store, ticket::BlobTicket};
 use n0_error::StackResultExt;
 use tokio::sync::watch;
 
@@ -17,7 +17,7 @@ pub async fn run_sender(
     progress_tx: watch::Sender<u64>,
     filename: &str,
     endpoint: &Endpoint,
-    store: &MemStore,
+    store: &Store,
     endpoint_addr: EndpointAddr,
 ) -> Result<SendOutcome> {
     let file_path = Path::new(filename);
@@ -37,10 +37,8 @@ pub async fn run_sender(
 
     println!("Hashing file.");
 
-    // When we import a blob, we get back a "tag" that refers to said blob in the store
-    // and allows us to control when/if it gets garbage-collected
-    let tag = store.blobs().add_path(abs_path).await?;
-    let ticket = BlobTicket::new(endpoint.id().into(), tag.hash, tag.format);
+    let tag = store.blobs().add_path(abs_path).temp_tag().await?;
+    let ticket = BlobTicket::new(endpoint.id().into(), tag.hash(), tag.format());
 
     println!("File hashed.");
 
@@ -89,6 +87,7 @@ pub async fn downloaded(
 mod tests {
     use super::*;
     use iroh::endpoint::presets;
+    use iroh_blobs::store::mem::MemStore;
 
     #[tokio::test]
     async fn rejects_directory_sources() -> Result<()> {
